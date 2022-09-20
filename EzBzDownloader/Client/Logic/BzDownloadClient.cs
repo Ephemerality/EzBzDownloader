@@ -76,6 +76,7 @@ namespace EzBzDownloader.Client.Logic
         {
             Console.WriteLine($"Starting download of {restore.DisplayFilename} ({restore.Zipsize / 1024 / 1024:N}MB)");
             var filename = Path.Combine(destinationPath, restore.DisplayFilename);
+            Console.WriteLine($"Writing to {filename}");
             var validateExisting = File.Exists(filename);
 
             await using var file = File.Open(filename, FileMode.OpenOrCreate, FileAccess.ReadWrite);
@@ -149,7 +150,7 @@ namespace EzBzDownloader.Client.Logic
 
             var content = new MultipartFormDataContent();
             content.Add(new StringContent(Version), "version");
-            content.Add(new StringContent(Encoding.UTF8.GetBytes(_session.Info.AccountProfile.Email).ToHex()), "hexemailaddr");
+            content.Add(new StringContent(Encoding.UTF8.GetBytes(_session.Info.AccountProfile!.Email).ToHex()), "hexemailaddr");
             content.Add(new StringContent(Encoding.UTF8.GetBytes("NULL").ToHex()), "hexpassword");
             content.Add(new StringContent(_session.AuthToken), "bz_v5_auth_token");
             content.Add(new StringContent(BzSanity.Calculate(_session.Info.AccountProfile.Email)), "bzsanity");
@@ -166,13 +167,27 @@ namespace EzBzDownloader.Client.Logic
 
         private async Task LoginAsync(CancellationToken cancellationToken)
         {
+            await LoginInternalAsync(cancellationToken);
+            if (_session == null)
+                throw new Exception("No session after login");
+            if (_session.Info.AccountProfile == null)
+                throw new Exception("Session missing account profile");
+        }
+
+        private async Task LoginInternalAsync(CancellationToken cancellationToken)
+        {
+            // Clear out old session
+            _session = null;
+
             var sessionRequest = new SessionRequest(_username);
             var message = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}{CreateSessionUrl}");
             message.Content = new StringContent(JsonConvert.SerializeObject(sessionRequest), Encoding.UTF8);
             message.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
 
             var response = await _client.SendAsync(message, cancellationToken);
-            _session = JsonConvert.DeserializeObject<SessionResponse>(await response.Content.ReadAsStringAsync(cancellationToken));
+            var sessionResponse = await response.Content.ReadAsStringAsync(cancellationToken);
+            _session = JsonConvert.DeserializeObject<SessionResponse>(sessionResponse)
+                       ?? throw new Exception($"Failed to deserialize session response: {sessionResponse}");
 
             var credentialsRequest = new CredentialsRequest
             {
@@ -186,7 +201,9 @@ namespace EzBzDownloader.Client.Logic
             message.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
 
             response = await _client.SendAsync(message, cancellationToken);
-            _session = JsonConvert.DeserializeObject<SessionResponse>(await response.Content.ReadAsStringAsync(cancellationToken));
+            sessionResponse = await response.Content.ReadAsStringAsync(cancellationToken);
+            _session = JsonConvert.DeserializeObject<SessionResponse>(sessionResponse)
+                       ?? throw new Exception($"Failed to deserialize session response: {sessionResponse}");
 
             if (_session.Challenge != null)
             {
@@ -221,7 +238,9 @@ namespace EzBzDownloader.Client.Logic
             message.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
 
             response = await _client.SendAsync(message, cancellationToken);
-            _session = JsonConvert.DeserializeObject<SessionResponse>(await response.Content.ReadAsStringAsync(cancellationToken));
+            sessionResponse = await response.Content.ReadAsStringAsync(cancellationToken);
+            _session = JsonConvert.DeserializeObject<SessionResponse>(sessionResponse)
+                       ?? throw new Exception($"Failed to deserialize session response: {sessionResponse}");
         }
 
         private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage message, CancellationToken cancellationToken)

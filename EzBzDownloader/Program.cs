@@ -21,7 +21,7 @@ namespace EzBzDownloader
             {
                 Name = "EzBzDownloader",
                 FullName = "Easy Backblaze Downloader",
-                Description = "Downloads all pending restores without logging every time"
+                Description = "Downloads all pending restores without having to log in every time"
             };
             cli.HelpOption("-h|--help");
 
@@ -33,7 +33,8 @@ namespace EzBzDownloader
             var username = cli.Option("-u", "Username", CommandOptionType.SingleValue);
             var password = cli.Option("-p", "Password", CommandOptionType.SingleValue);
             var totpKey = cli.Option("-k", "TOTP Key", CommandOptionType.SingleValue);
-            var save = cli.Option("--save", "Saves the given username/password/totp key for use on next launch", CommandOptionType.NoValue);
+            var destinationPath = cli.Option("-d", "Destination path (default is current program dir)", CommandOptionType.SingleValue);
+            var save = cli.Option("-s", "Saves the given username/password/totp key for use on next launch", CommandOptionType.NoValue);
 
             config.Username = username.HasValue()
                 ? username.Value()
@@ -46,17 +47,29 @@ namespace EzBzDownloader
                 ? totpKey.Value()
                 : Prompt.GetPassword("Enter your TOTP key (optional - if not specified but 2FA is required, will prompt for TOTP code):");
 
-            if (username.HasValue())
-                config.Username = username.Value();
-            if (password.HasValue())
-                config.Password = password.Value();
-            if (totpKey.HasValue())
-                config.SecretKey = totpKey.Value();
+            config.DestinationPath = destinationPath.HasValue()
+                ? destinationPath.Value()
+                : Prompt.GetString("Enter destination path (optional - if not specified the program directory will be used):");
+            //
+            // if (username.HasValue())
+            //     config.Username = username.Value();
+            // if (password.HasValue())
+            //     config.Password = password.Value();
+            // if (totpKey.HasValue())
+            //     config.SecretKey = totpKey.Value();
+            // if (destinationPath.HasValue())
+            //     config.DestinationPath = destinationPath.Value();
 
             if (string.IsNullOrWhiteSpace(config.Username))
                 throw new Exception("Username is required");
             if (string.IsNullOrWhiteSpace(config.Password))
                 throw new Exception("Password is required");
+
+            if (File.Exists(config.DestinationPath))
+                throw new Exception($"Path must be to a directory, not a file: {config.DestinationPath}");
+
+            if (!string.IsNullOrEmpty(config.DestinationPath) && !Directory.Exists(config.DestinationPath))
+                Directory.CreateDirectory(config.DestinationPath);
 
             if (save.HasValue())
                 await File.WriteAllTextAsync("config.json", JsonConvert.SerializeObject(config), Encoding.UTF8, cancellationTokenSource.Token);
@@ -79,7 +92,7 @@ namespace EzBzDownloader
             foreach (var restore in restores)
             {
                 Console.WriteLine($"Downloading {restore.DisplayFilename} ({restore.Zipsize / 1024 / 1024:N}MB)");
-                await client.DownloadRestoreAsync(restore, "", cancellationToken);
+                await client.DownloadRestoreAsync(restore, config.DestinationPath ?? "", cancellationToken);
             }
 
             return 0;

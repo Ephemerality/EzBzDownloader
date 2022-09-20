@@ -1,3 +1,5 @@
+using JetBrains.Annotations;
+
 namespace EzBzDownloader.Client.Model
 {
     public sealed class Config
@@ -5,5 +7,7 @@ namespace EzBzDownloader.Client.Model
         public string Username { get; set; }
         public string Password { get; set; }
         public string SecretKey { get; set; }
+        [CanBeNull]
+        public string DestinationPath { get; set; }
     }
 }
